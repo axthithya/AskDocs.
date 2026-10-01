@@ -1,0 +1,6 @@
+data/pdfs/
+data/index/
+.env
+__pycache__/
+*.pem
+data/experiments/
