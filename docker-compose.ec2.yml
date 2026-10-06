@@ -1,0 +1,24 @@
+services:
+  backend:
+    image: ghcr.io/axthithya/askdocs/backend:latest
+    container_name: askdocs-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - /home/ubuntu/askdocs-data/index:/app/data/index:ro
+    environment:
+      AWS_REGION: us-east-1
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/axthithya/askdocs/frontend:latest
+    container_name: askdocs-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      API_URL: http://backend:8000
+    volumes:
+      - /home/ubuntu/askdocs-data/pdfs:/app/data/pdfs:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
