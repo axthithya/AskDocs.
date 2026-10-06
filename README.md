@@ -86,9 +86,11 @@ Tests cover chunking only and need no AWS credentials.
 
 **hit@k** = the share of evaluation questions for which at least one of the top-k retrieved chunks comes from the expected PDF and contains an expected keyword. Retrieval is evaluated separately from generation: if the right chunk is never retrieved the LLM cannot answer correctly, and measuring retrieval alone (no LLM calls, deterministic, cheap) shows whether a failure is a search problem or a generation problem.
 
-**Dataset:** `eval/questions.jsonl` must be written by hand from the PDFs in `data/pdfs/`, verifying each answer exists in the text (see [eval/README.md](eval/README.md)). **Current status: 0 questions**, because no PDFs had been added when this phase was built, so **there is no baseline result and no experiment table yet**.
+**Dataset:** 3 synthetic test PDFs in `data/pdfs/` (`cloud_architecture_basics.pdf` 2 pages, `rag_system_design.pdf` 2 pages, `devops_observability.pdf` 1 page) and 30 questions in `eval/questions.jsonl`. Every question's expected keyword was checked by script to appear in the text extracted from its expected PDF, and to fall inside a single chunk under all three chunk configurations (so a keyword split across a chunk boundary cannot cause a false miss).
 
-Once you have questions and PDFs:
+**Status: retrieval results are not measured yet.** The dataset is complete, but no AWS credentials were available when it was built, so the Titan-embedded index, baseline hit@4, chunk/top-k experiments and generation test have **not been run**. There is no results table yet.
+
+To produce results:
 
 ```bash
 python -m app.ingest
@@ -97,13 +99,7 @@ python -m eval.run_experiments   # writes eval/results.csv
 python -m eval.run_generation    # optional: answers + basic no-answer behavior check
 ```
 
-Results table (fill from `eval/results.csv` after running; do not fill by hand):
-
-| Chunk Size | Overlap | Top-k | Hit Rate |
-| ---------- | ------- | ----- | -------- |
-| _not yet measured_ | | | |
-
-Observations will be written here only after real results exist.
+Results tables (fill from `eval/results.csv` after running; do not fill by hand): _not yet measured_. Observations will be written here only after real results exist.
 
 ## Troubleshooting
 

@@ -41,9 +41,8 @@ def main() -> None:
         rows.append((name, size, overlap, 4, hits, total, round(hits / total, 4)))
         print(f"{name}: hit@4 = {hits}/{total}")
 
-    # Part 2: vary top_k on the config with the highest hit@4 (ties -> the default 1000 config)
-    best = max(rows, key=lambda r: (r[6], r[0] == "chunk1000"))
-    name, size, overlap = best[0], best[1], best[2]
+    # Part 2: vary top_k on the default 1000/150 configuration
+    name, size, overlap = "chunk1000", 1000, 150
     print(f"=== top-k experiment on {name} ===")
     for k in TOP_KS:
         hits = evaluate(retrievers[name], questions, k, verbose=False)

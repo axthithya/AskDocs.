@@ -1,0 +1,30 @@
+{"question": "What is cloud computing?", "source": "cloud_architecture_basics.pdf", "keyword": "on-demand delivery of computing resources"}
+{"question": "What does elasticity mean as a benefit of cloud computing?", "source": "cloud_architecture_basics.pdf", "keyword": "increase or decrease resources"}
+{"question": "How does the shared responsibility model divide security duties?", "source": "cloud_architecture_basics.pdf", "keyword": "shared responsibility model"}
+{"question": "What is the difference between availability and reliability?", "source": "cloud_architecture_basics.pdf", "keyword": "perform correctly and recover from failures"}
+{"question": "What does RTO stand for and what does it measure?", "source": "cloud_architecture_basics.pdf", "keyword": "Recovery Time Objective"}
+{"question": "What does RPO describe?", "source": "cloud_architecture_basics.pdf", "keyword": "maximum acceptable amount of data loss"}
+{"question": "What is vertical scaling?", "source": "cloud_architecture_basics.pdf", "keyword": "assigning more CPU or memory"}
+{"question": "How does a load balancer work with horizontal scaling?", "source": "cloud_architecture_basics.pdf", "keyword": "distributes incoming requests"}
+{"question": "What is a private subnet commonly used for?", "source": "cloud_architecture_basics.pdf", "keyword": "should not accept direct internet traffic"}
+{"question": "What can a NAT gateway do for resources in a private subnet?", "source": "cloud_architecture_basics.pdf", "keyword": "initiate outbound internet connections"}
+{"question": "What is object storage well suited for?", "source": "cloud_architecture_basics.pdf", "keyword": "buckets"}
+{"question": "What is block storage commonly used for?", "source": "cloud_architecture_basics.pdf", "keyword": "persistent virtual disks"}
+{"question": "What is Retrieval-Augmented Generation?", "source": "rag_system_design.pdf", "keyword": "combines information retrieval with a language model"}
+{"question": "What stages does a basic RAG pipeline contain?", "source": "rag_system_design.pdf", "keyword": "prompt construction, and generation stages"}
+{"question": "What does chunk overlap do?", "source": "rag_system_design.pdf", "keyword": "repeats a small amount of text between adjacent chunks"}
+{"question": "What does vector normalization do?", "source": "rag_system_design.pdf", "keyword": "unit length"}
+{"question": "How does inner product relate to cosine similarity for normalized vectors?", "source": "rag_system_design.pdf", "keyword": "inner product corresponds to cosine similarity"}
+{"question": "What does the FAISS IndexFlatIP index do?", "source": "rag_system_design.pdf", "keyword": "exact search using inner product"}
+{"question": "Why use approximate nearest-neighbor indexes for larger collections?", "source": "rag_system_design.pdf", "keyword": "trading some exactness for speed"}
+{"question": "What does top-k specify and what is the tradeoff of increasing it?", "source": "rag_system_design.pdf", "keyword": "irrelevant context"}
+{"question": "What does hit@k measure?", "source": "rag_system_design.pdf", "keyword": "relevant chunk appears among the top k"}
+{"question": "What source metadata can be returned with a generated response?", "source": "rag_system_design.pdf", "keyword": "filename and page number"}
+{"question": "What is a Dockerfile used for?", "source": "devops_observability.pdf", "keyword": "describes how an image is built"}
+{"question": "What does Continuous Integration do?", "source": "devops_observability.pdf", "keyword": "automatically builds and tests changes"}
+{"question": "How does Prometheus collect metrics?", "source": "devops_observability.pdf", "keyword": "periodically scrapes"}
+{"question": "What are the four golden signals?", "source": "devops_observability.pdf", "keyword": "latency, traffic, errors, and saturation"}
+{"question": "What does a p95 latency metric mean?", "source": "devops_observability.pdf", "keyword": "95 percent of observed requests"}
+{"question": "What does least privilege mean?", "source": "devops_observability.pdf", "keyword": "only the permissions required"}
+{"question": "How can workloads get credentials without static keys?", "source": "devops_observability.pdf", "keyword": "instance roles"}
+{"question": "Where should secrets not be committed?", "source": "devops_observability.pdf", "keyword": "source control"}
