@@ -34,7 +34,7 @@ jobs:
 
       # GHCR image names must be lowercase.
       - name: Set image prefix
-        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/askdocs" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v3
 
