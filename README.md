@@ -1,160 +1,242 @@
 # AskDocs
 
-AskDocs is a small Retrieval-Augmented Generation (RAG) app for asking questions about your own PDF documents. PDFs are split into chunks, embedded with Amazon Titan, stored in a local FAISS index, and at question time the most relevant chunks are given to Amazon Nova Lite, which answers using only that context.
+AskDocs is a document question-answering application built with Retrieval-Augmented Generation (RAG). It indexes text from PDFs with Amazon Titan Text Embeddings V2, retrieves relevant passages with FAISS, and uses Amazon Nova Lite to produce an answer with retrieved document and page references.
+
+## Overview
+
+AskDocs helps users find answers in a small collection of technical PDFs. A Streamlit chat interface sends questions to a FastAPI service, which retrieves passages from a prebuilt local FAISS index and supplies them as context to the language model.
+
+The repository includes local development code, Docker images and Compose deployment configuration, a GitHub Actions workflow, and Prometheus/Grafana monitoring configuration.
+
+## Demo
+
+A question supported by the indexed documents returns an answer and source pages:
+
+![AskDocs grounded answer](docs/images/askdocs-answer.png)
+
+When the retrieved context does not support an answer, the prompt asks Nova Lite to say it could not find the answer. The UI suppresses the retrieved source list for that refusal response:
+
+![AskDocs no-answer response](docs/images/askdocs-no-answer.png)
 
 ## Architecture
 
-```
-PDF → Chunking → Titan Embeddings → FAISS → Retriever → Nova → FastAPI → Streamlit
-```
+![AskDocs architecture](docs/images/architecture.png)
 
-| File | Role |
-|---|---|
-| `app/config.py` | Settings from environment variables |
-| `app/bedrock.py` | Only place that calls Bedrock (`embed`, `generate`) |
-| `app/ingest.py` | PDF → chunks → embeddings → FAISS index |
-| `app/retriever.py` | Query → embedding → top-k chunks |
-| `app/rag.py` | Retrieval + prompt + Nova answer |
-| `app/main.py` | FastAPI: `/health`, `/ask`, `/metrics` |
-| `ui/streamlit_app.py` | UI that calls the API |
+**Question and answer path:** PDFs → page text extraction and chunking → Titan embeddings → FAISS search → top-K passages → FastAPI prompt → Nova Lite → answer and retrieved sources.
+
+**Deployment and operations path:** GitHub push or pull request → GitHub Actions checks and image builds → GHCR publication on pushes to main → Docker Compose services on EC2 → Prometheus metrics and Grafana dashboard.
+
+## How RAG Works
+
+1. **Extract:** pypdf reads text page by page from PDFs in data/pdfs/.
+2. **Chunk:** extracted page text is whitespace-normalized and split into character-count chunks with overlap. Each chunk keeps its PDF filename and page number.
+3. **Embed and index:** Titan Text Embeddings V2 creates normalized 512-dimensional vectors by default. FAISS IndexFlatIP stores them; with normalized vectors, inner product is used as cosine similarity.
+4. **Embed the question:** the backend sends the question to the same embedding model.
+5. **Retrieve:** FAISS returns the top-K most similar chunks. Top-K is the number of passages supplied as candidates; the default is 4.
+6. **Generate:** FastAPI places the question and retrieved passages into a prompt instructing Nova Lite to use only the supplied context and to state when it cannot find the answer.
+7. **Return sources:** the API returns the generated answer and metadata for the retrieved chunks. The UI displays distinct PDF/page pairs, except when it detects the refusal phrase.
 
 ## Technology
 
-Python, pypdf, FAISS (`IndexFlatIP`), boto3, Amazon Bedrock (Titan Text Embeddings V2, Nova Lite), FastAPI, slowapi, prometheus-client, Streamlit, pytest, ruff.
-
-## Local setup
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows  (Linux/macOS: source .venv/bin/activate)
-pip install -r requirements.txt
-```
-
-## AWS credentials
-
-No credentials are stored in the code. Use the standard AWS chain, e.g. `aws configure`, or set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and `AWS_SESSION_TOKEN`) as environment variables. Your identity needs `bedrock:InvokeModel` and access to the Titan Embeddings V2 and Nova Lite models enabled in the Bedrock console (region `us-east-1` by default).
-
-Optional environment variables (defaults shown): `AWS_REGION=us-east-1`, `EMBED_MODEL_ID=amazon.titan-embed-text-v2:0`, `LLM_MODEL_ID=amazon.nova-lite-v1:0`, `EMBED_DIM=512`, `CHUNK_SIZE=1000`, `CHUNK_OVERLAP=150`, `TOP_K=4`, `DATA_DIR=data`, `INDEX_DIR=data/index`.
-
-## Add PDFs and build the index
-
-Copy text-based PDFs into `data/pdfs/`, then:
-
-```bash
-python -m app.ingest
-```
-
-This writes `data/index/faiss.index` and `data/index/chunks.json`. Re-run it whenever the PDFs change.
-
-## Start the API
-
-```bash
-uvicorn app.main:app --reload
-```
-
-Check `http://localhost:8000/health`. Metrics are at `/metrics`. `/ask` is limited to 10 requests/minute per IP.
-
-## Start the UI
-
-```bash
-streamlit run ui/streamlit_app.py
-```
-
-Set `API_URL` if the API is not at `http://localhost:8000`.
-
-## Using the Chat UI
-
-1. Build the index once: `python -m app.ingest`
-2. Start FastAPI: `uvicorn app.main:app --reload`
-3. In a second terminal start Streamlit: `streamlit run ui/streamlit_app.py`
-4. Open the browser (Streamlit prints the URL, usually `http://localhost:8501`) and ask questions about the indexed PDFs. The sidebar lists the PDFs in `data/pdfs/` and lets you change Top-K.
-5. Answers are generated by Amazon Nova Lite using only the retrieved document context. If the documents don't contain the answer, the bot says so and shows no sources.
-6. **Sources** list the PDF and page of the chunks that were retrieved.
-
-Flow: `PDF → Embeddings → FAISS → Retrieval → Nova Lite → Answer + Sources`. Streamlit only calls FastAPI (`POST /ask`); it never calls Bedrock directly. The UI only displays PDFs already indexed; adding PDFs still means copying them to `data/pdfs/` and re-running `python -m app.ingest`.
-
-## Run with Docker Compose
-
-```bash
-docker compose build
-docker compose up
-```
-
-- UI: http://localhost:8501
-- API: http://localhost:8000 (`/health`)
-
-The backend uses the existing `data/index/` (mounted read-only), so build the index first with `python -m app.ingest`; nothing is ingested at container start. AWS credentials are never baked into the images: configure them on the host (`aws configure`, or `AWS_*` environment variables in your shell). Compose passes those variables through and mounts `~/.aws` read-only. Ports 8000/8501 must be free, so stop any local uvicorn/streamlit first.
-
-## Monitoring
-
-`docker compose up -d` also starts a small monitoring stack:
-
-- **Prometheus** scrapes metrics every 15s from the FastAPI backend (`backend:8000/metrics`) and from Node Exporter.
-- **Node Exporter** exposes host metrics (CPU, memory, disk, load). It has no published port; only Prometheus can reach it.
-- **Grafana** uses Prometheus as a pre-provisioned data source and shows the "AskDocs Monitoring" dashboard (request rate/count/errors, latency avg + p95, CPU, memory, disk, load).
-
-| Service | URL |
+| Area | Technologies |
 |---|---|
-| FastAPI | http://localhost:8000 |
-| Streamlit | http://localhost:8501 |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 (user `admin`) |
+| AI and retrieval | Amazon Bedrock, Titan Text Embeddings V2, Amazon Nova Lite, FAISS |
+| Backend | Python, FastAPI, Pydantic, pypdf, boto3 |
+| Frontend | Streamlit |
+| Deployment | Docker, Docker Compose, AWS EC2, GitHub Container Registry (GHCR) |
+| CI/CD | GitHub Actions |
+| Monitoring | Prometheus, Node Exporter, Grafana |
+| Quality | pytest, Ruff |
 
-The Grafana admin password comes from the `GRAFANA_ADMIN_PASSWORD` environment variable (default `admin`, for local demo only). Set it in your shell or a git-ignored `.env` file before exposing Grafana anywhere.
+## Project Structure
 
-App metrics: `askdocs_requests_total{status}` and `askdocs_request_seconds` (histogram).
-
-## CI/CD
-
-GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
-
-- runs `pytest` and `ruff` (no AWS credentials needed; tests make no Bedrock calls)
-- builds the backend and frontend Docker images
-- on pushes to `main` only, publishes them to GHCR using the built-in `GITHUB_TOKEN`:
-  `ghcr.io/<owner>/<repo>/backend` and `ghcr.io/<owner>/<repo>/frontend` (tags `latest` and the commit SHA)
-
-## Example question
-
-> What is AWS Well-Architected Framework?
-
-Or via the API:
-
-```bash
-curl -X POST http://localhost:8000/ask -H "Content-Type: application/json" \
-  -d '{"question": "What is AWS Well-Architected Framework?", "top_k": 4}'
+```text
+.
+├── .github/workflows/ci.yml       # Tests, lint, image build and GHCR publication
+├── app/
+│   ├── bedrock.py                 # Bedrock embedding and generation calls
+│   ├── config.py                  # Environment-based settings
+│   ├── ingest.py                  # PDF extraction, chunking and index creation
+│   ├── main.py                    # FastAPI routes and application metrics
+│   ├── rag.py                     # Retrieval, prompt and answer orchestration
+│   └── retriever.py               # FAISS vector search
+├── data/
+│   ├── pdfs/                      # Source PDFs
+│   ├── index/                     # Built FAISS index and chunk metadata
+│   └── experiments/               # Cached experiment indexes (ignored by Git)
+├── docs/images/                   # Project screenshots
+├── eval/                          # Retrieval and generation evaluation scripts/data
+├── monitoring/                    # Prometheus and Grafana configuration/dashboard
+├── tests/                         # Chunking and evaluation helper tests
+├── ui/streamlit_app.py            # Streamlit chat UI
+├── Dockerfile.backend
+├── Dockerfile.frontend
+├── docker-compose.yml             # Five-service deployment stack
+├── docker-compose.ec2.yml         # Backend/frontend EC2 Compose variant
+└── requirements.txt
 ```
 
-## Tests
-
-```bash
-pytest -q
-ruff check .
-```
-
-Tests cover chunking only and need no AWS credentials.
+The main index files, data/index/faiss.index and data/index/chunks.json, are generated by ingestion and are git-ignored. The Compose deployment mounts an index prepared on its host.
 
 ## Evaluation
 
-**hit@k** = the share of evaluation questions for which at least one of the top-k retrieved chunks comes from the expected PDF and contains an expected keyword. Retrieval is evaluated separately from generation: if the right chunk is never retrieved the LLM cannot answer correctly, and measuring retrieval alone (no LLM calls, deterministic, cheap) shows whether a failure is a search problem or a generation problem.
+The retrieval evaluation uses 30 questions based on the three PDFs in data/pdfs/. A hit requires at least one of the top-K retrieved chunks to come from the expected PDF and contain that question's expected keyword. This keyword-based check is a retrieval proxy; it does not measure answer correctness.
 
-**Dataset:** 3 synthetic test PDFs in `data/pdfs/` (`cloud_architecture_basics.pdf` 2 pages, `rag_system_design.pdf` 2 pages, `devops_observability.pdf` 1 page) and 30 questions in `eval/questions.jsonl`. Every question's expected keyword was checked by script to appear in the text extracted from its expected PDF, and to fall inside a single chunk under all three chunk configurations (so a keyword split across a chunk boundary cannot cause a false miss).
+![Retrieval evaluation results](docs/images/evaluation-results.png)
 
-**Status: retrieval results are not measured yet.** The dataset is complete, but no AWS credentials were available when it was built, so the Titan-embedded index, baseline hit@4, chunk/top-k experiments and generation test have **not been run**. There is no results table yet.
+The checked-in eval/results.csv records:
 
-To produce results:
+| Experiment | Hit result |
+|---|---:|
+| 500-character chunks / 100 overlap, K=4 | 30/30 (100%) |
+| 1,000-character chunks / 150 overlap, K=4 | 30/30 (100%) |
+| 1,500-character chunks / 200 overlap, K=4 | 30/30 (100%) |
+| 1,000 / 150 chunks, K=2 | 29/30 (96.67%) |
+| 1,000 / 150 chunks, K=4 | 30/30 (100%) |
+| 1,000 / 150 chunks, K=6 | 30/30 (100%) |
+
+These are results for the checked-in dataset and index configurations, not a general accuracy guarantee. The experiment script chooses chunk size 1,000 / overlap 150 as the default for its Top-K comparison; K=4 reaches the same measured hit rate as K=6 with fewer retrieved passages.
+
+## Retrieval Experiments
+
+The chunk experiment compares three configurations at K=4. The first number is the maximum chunk length in characters; the second is the number of overlapping characters between adjacent chunks.
+
+![Chunk-size experiments](docs/images/chunk-experiments.png)
+
+The CSV shows 30/30 hits for each tested configuration. The Top-K comparison, run with 1,000-character chunks and 150-character overlap, recorded 29/30 at K=2 and 30/30 at K=4 and K=6. A Top-K screenshot is not present in docs/images/; these values come from eval/results.csv.
+
+## Grounding Behavior
+
+The prompt in app/rag.py instructs Nova Lite to answer only from the retrieved context, avoid inventing facts, and use the phrase “I couldn't find that in the provided documents.” when context does not contain the answer. The UI hides sources when it recognizes this phrase.
+
+python -m eval.run_generation includes a basic no-answer phrase check over five unrelated questions. This checks for the expected response text; it is not a rigorous hallucination or answer-quality evaluation.
+
+## Local Development
+
+The local workflow runs the Python API and Streamlit UI directly. It requires Python 3.12 (the CI workflow uses 3.12), an AWS identity available through boto3's default credential chain, and permission to invoke the configured Bedrock models.
+
+1. Clone the repository and enter it:
+
+   ```bash
+   git clone <repository-url>
+   cd AskDocs
+   ```
+
+2. Create and activate a virtual environment, then install dependencies:
+
+   ```bash
+   python -m venv .venv
+   # Windows PowerShell
+   .venv\Scripts\Activate.ps1
+   # Linux/macOS: source .venv/bin/activate
+   python -m pip install -r requirements.txt
+   ```
+
+3. Configure AWS credentials using an AWS profile/standard credential chain or environment variables. Do not put credentials in source files. The identity needs bedrock:InvokeModel access for the configured Titan and Nova models in the selected region. Defaults are us-east-1, amazon.titan-embed-text-v2:0, and amazon.nova-lite-v1:0.
+
+4. Put text-based PDFs in data/pdfs/ and build the index:
+
+   ```bash
+   python -m app.ingest
+   ```
+
+   Ingestion writes data/index/faiss.index and data/index/chunks.json. Rebuild the index after changing the PDFs. Scanned image-only PDFs need OCR before ingestion.
+
+5. Start the API in one terminal:
+
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+6. Start the UI in a second terminal:
+
+   ```bash
+   streamlit run ui/streamlit_app.py
+   ```
+
+7. Open the URL printed by Streamlit (normally http://localhost:8501). The API health endpoint is http://localhost:8000/health.
+
+Useful configuration defaults in app/config.py include CHUNK_SIZE=1000, CHUNK_OVERLAP=150, TOP_K=4, EMBED_DIM=512, DATA_DIR=data, and INDEX_DIR=data/index. Set API_URL to change the UI's API target.
+
+## Docker Deployment
+
+The Dockerfiles build separate backend and frontend images. The backend image runs Uvicorn; the frontend image runs Streamlit. The committed docker-compose.yml uses GHCR images and mounts host paths under /home/ubuntu/askdocs/, so it is configured for the deployment host rather than a portable local checkout. It expects the index and PDFs to exist at the mounted host locations.
+
+The Compose stack defines:
+
+| Compose service | Container | Purpose |
+|---|---|---|
+| backend | askdocs-backend | FastAPI and Bedrock-backed RAG |
+| frontend | askdocs-frontend | Streamlit interface |
+| prometheus | askdocs-prometheus | Scrapes application and host metrics |
+| node-exporter | askdocs-node-exporter | Exposes host metrics |
+| grafana | askdocs-grafana | Dashboard visualization |
+
+On the configured host, set GRAFANA_ADMIN_PASSWORD in the environment and start the stack from the repository directory:
 
 ```bash
-python -m app.ingest
-python -m eval.run_eval 4
-python -m eval.run_experiments   # writes eval/results.csv
-python -m eval.run_generation    # optional: answers + basic no-answer behavior check
+docker compose pull
+docker compose up -d
 ```
 
-Results tables (fill from `eval/results.csv` after running; do not fill by hand): _not yet measured_. Observations will be written here only after real results exist.
+The deployment publishes ports 8000 (API), 8501 (UI), 9090 (Prometheus), and 3000 (Grafana). The separate docker-compose.ec2.yml contains just the backend and frontend and uses its own host data paths.
 
-## Troubleshooting
+## CI/CD
 
-- **`AccessDeniedException`** — Enable model access for Titan Text Embeddings V2 and Nova Lite in the Bedrock console (correct region), and make sure your IAM identity allows `bedrock:InvokeModel`.
-- **Nova model / inference profile error** — If Bedrock says the model needs an inference profile, set `LLM_MODEL_ID` to the profile ID, e.g. `us.amazon.nova-lite-v1:0`. The error message printed by the app names this.
-- **"Index not found"** (API returns 503) — Run `python -m app.ingest` after adding PDFs to `data/pdfs/`.
-- **"No text found" during ingestion** — The PDFs are empty or scanned images; pypdf only extracts embedded text. Use text-based PDFs (or OCR them first).
+The workflow in .github/workflows/ci.yml runs on pushes and pull requests. It installs requirements, runs pytest and Ruff, then builds both Docker images. The Docker job depends on the test job.
+
+![GitHub Actions workflow](docs/images/github-actions.png)
+
+On pushes to main, the workflow logs into GHCR with the repository's GITHUB_TOKEN and publishes backend and frontend images tagged latest and with the commit SHA. Pull requests and other branch pushes build the images without publishing them.
+
+![AskDocs GHCR packages](docs/images/ghcr-packages.png)
+
+The tests do not call Bedrock. The current pytest suite covers chunking and evaluation helper behavior.
+
+## AWS Deployment
+
+AskDocs is deployed on an AWS EC2 host with Docker Compose and GHCR container images. The deployment screenshot shows the EC2 instance; the repository does not document an instance type.
+
+![EC2 deployment](docs/images/ec2-instance.png)
+
+The EC2 Compose configuration mounts the prebuilt index and PDF directory from host storage. The backend uses boto3's default AWS credential chain and the configured AWS_REGION; no AWS access keys are set in the Compose service configuration. The repository does not include the EC2 provisioning or IAM role policy configuration.
+
+![Containers on EC2](docs/images/docker-services.png)
+
+## Monitoring
+
+Prometheus scrapes the FastAPI /metrics endpoint and Node Exporter every 15 seconds. The backend exports request counts labeled by success/error status and request duration. Node Exporter exposes host-level metrics; Grafana loads the provisioned Prometheus datasource and AskDocs dashboard.
+
+The dashboard includes API request rate and total, API errors, average and p95 request latency, and host CPU, memory, disk, and load.
+
+![AskDocs Grafana dashboard](docs/images/grafana-dashboard.png)
+
+## Security and Cost
+
+- Bedrock calls require AWS credentials and incur usage charges.
+- The checked-in Compose configuration does not provide AWS access keys to the backend; boto3 obtains credentials from its runtime environment.
+- Grafana's password is supplied through GRAFANA_ADMIN_PASSWORD. The Compose file does not set a secure default, so configure it before exposing the service.
+
+## Limitations
+
+- FAISS and the index files are local to the deployment; the repository does not configure a managed vector database.
+- Updating documents requires rebuilding and replacing the index.
+- Retrieval evaluation uses expected source plus keyword matching; it is not an end-to-end answer accuracy score.
+- The API returns metadata for retrieved chunks. The displayed sources indicate retrieved context, and do not verify which exact passages the model relied on.
+
+## Future Improvements
+
+- Add document upload and index rebuild controls.
+- Expand the retrieval dataset and evaluate answer quality and citation precision.
+- Add authentication and a managed HTTPS entry point.
+- Consider a managed vector store for larger document collections.
+
+## What This Project Demonstrates
+
+RAG ingestion and retrieval, embedding-based search, Amazon Bedrock integration, FastAPI and Streamlit application design, Docker image packaging and Compose deployment, AWS EC2 operations, GitHub Actions and GHCR automation, Prometheus/Grafana monitoring, and retrieval evaluation.
+
+## Resume-Level Summary
+
+- Built a PDF question-answering application using Amazon Bedrock embeddings and generation, FAISS retrieval, FastAPI, and Streamlit, returning answers with retrieved document/page metadata.
+- Packaged and deployed the service with Docker Compose on EC2, automated checks and GHCR image publication with GitHub Actions, and configured Prometheus/Grafana monitoring.
+- Evaluated retrieval on 30 document questions across chunk and Top-K settings; recorded 30/30 keyword-based hits at K=4 for the tested configurations.
