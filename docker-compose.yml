@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Passed through from the host shell if set; never hardcoded here.
+      - AWS_REGION
+      - AWS_PROFILE
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+    volumes:
+      - ./data/index:/app/data/index:ro
+      # Host AWS config/credentials (read-only), used when no env vars are set.
+      - ${HOME:-${USERPROFILE}}/.aws:/root/.aws:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://backend:8000
+    volumes:
+      # Only used to list PDF names in the sidebar.
+      - ./data/pdfs:/app/data/pdfs:ro
+    depends_on:
+      backend:
+        condition: service_healthy

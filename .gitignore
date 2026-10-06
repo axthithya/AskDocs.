@@ -4,3 +4,4 @@ data/index/
 __pycache__/
 *.pem
 data/experiments/
+.aws/

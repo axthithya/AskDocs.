@@ -73,6 +73,18 @@ Set `API_URL` if the API is not at `http://localhost:8000`.
 
 Flow: `PDF → Embeddings → FAISS → Retrieval → Nova Lite → Answer + Sources`. Streamlit only calls FastAPI (`POST /ask`); it never calls Bedrock directly. The UI only displays PDFs already indexed; adding PDFs still means copying them to `data/pdfs/` and re-running `python -m app.ingest`.
 
+## Run with Docker Compose
+
+```bash
+docker compose build
+docker compose up
+```
+
+- UI: http://localhost:8501
+- API: http://localhost:8000 (`/health`)
+
+The backend uses the existing `data/index/` (mounted read-only), so build the index first with `python -m app.ingest`; nothing is ingested at container start. AWS credentials are never baked into the images: configure them on the host (`aws configure`, or `AWS_*` environment variables in your shell). Compose passes those variables through and mounts `~/.aws` read-only. Ports 8000/8501 must be free, so stop any local uvicorn/streamlit first.
+
 ## Example question
 
 > What is AWS Well-Architected Framework?
