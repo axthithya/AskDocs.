@@ -85,6 +85,15 @@ docker compose up
 
 The backend uses the existing `data/index/` (mounted read-only), so build the index first with `python -m app.ingest`; nothing is ingested at container start. AWS credentials are never baked into the images: configure them on the host (`aws configure`, or `AWS_*` environment variables in your shell). Compose passes those variables through and mounts `~/.aws` read-only. Ports 8000/8501 must be free, so stop any local uvicorn/streamlit first.
 
+## CI/CD
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
+
+- runs `pytest` and `ruff` (no AWS credentials needed; tests make no Bedrock calls)
+- builds the backend and frontend Docker images
+- on pushes to `main` only, publishes them to GHCR using the built-in `GITHUB_TOKEN`:
+  `ghcr.io/<owner>/<repo>/backend` and `ghcr.io/<owner>/<repo>/frontend` (tags `latest` and the commit SHA)
+
 ## Example question
 
 > What is AWS Well-Architected Framework?
