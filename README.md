@@ -85,6 +85,25 @@ docker compose up
 
 The backend uses the existing `data/index/` (mounted read-only), so build the index first with `python -m app.ingest`; nothing is ingested at container start. AWS credentials are never baked into the images: configure them on the host (`aws configure`, or `AWS_*` environment variables in your shell). Compose passes those variables through and mounts `~/.aws` read-only. Ports 8000/8501 must be free, so stop any local uvicorn/streamlit first.
 
+## Monitoring
+
+`docker compose up -d` also starts a small monitoring stack:
+
+- **Prometheus** scrapes metrics every 15s from the FastAPI backend (`backend:8000/metrics`) and from Node Exporter.
+- **Node Exporter** exposes host metrics (CPU, memory, disk, load). It has no published port; only Prometheus can reach it.
+- **Grafana** uses Prometheus as a pre-provisioned data source and shows the "AskDocs Monitoring" dashboard (request rate/count/errors, latency avg + p95, CPU, memory, disk, load).
+
+| Service | URL |
+|---|---|
+| FastAPI | http://localhost:8000 |
+| Streamlit | http://localhost:8501 |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 (user `admin`) |
+
+The Grafana admin password comes from the `GRAFANA_ADMIN_PASSWORD` environment variable (default `admin`, for local demo only). Set it in your shell or a git-ignored `.env` file before exposing Grafana anywhere.
+
+App metrics: `askdocs_requests_total{status}` and `askdocs_request_seconds` (histogram).
+
 ## CI/CD
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:

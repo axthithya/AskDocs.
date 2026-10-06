@@ -1,38 +1,67 @@
 services:
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    image: ghcr.io/axthithya/askdocs/backend:latest
+    container_name: askdocs-backend
     ports:
       - "8000:8000"
-    environment:
-      # Passed through from the host shell if set; never hardcoded here.
-      - AWS_REGION
-      - AWS_PROFILE
-      - AWS_ACCESS_KEY_ID
-      - AWS_SECRET_ACCESS_KEY
-      - AWS_SESSION_TOKEN
     volumes:
-      - ./data/index:/app/data/index:ro
-      # Host AWS config/credentials (read-only), used when no env vars are set.
-      - ${HOME:-${USERPROFILE}}/.aws:/root/.aws:ro
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - /home/ubuntu/askdocs/data/index:/app/data/index:ro
+    environment:
+      AWS_REGION: us-east-1
+    restart: unless-stopped
 
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    image: ghcr.io/axthithya/askdocs/frontend:latest
+    container_name: askdocs-frontend
     ports:
       - "8501:8501"
     environment:
-      - API_URL=http://backend:8000
+      API_URL: http://backend:8000
     volumes:
-      # Only used to list PDF names in the sidebar.
-      - ./data/pdfs:/app/data/pdfs:ro
+      - /home/ubuntu/askdocs/data/pdfs:/app/data/pdfs:ro
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: askdocs-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - backend
+      - node-exporter
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: askdocs-node-exporter
+    command:
+      - "--path.rootfs=/host"
+    pid: host
+    volumes:
+      - /:/host:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: askdocs-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
